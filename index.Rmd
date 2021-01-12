@@ -5,26 +5,123 @@ date: "1/11/2021"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
 ```
 
-## R Markdown
+## Project Background
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+The goal of your project is to predict the manner in which they did the exercise. This is the “classe” variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
 
-```{r cars}
-summary(cars)
+You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details.
+
+```{r, message=FALSE}
+library(caret)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(rattle)
+library(RColorBrewer)
+setwd("~/Documents/GitHub/practicalmachinelearning")
 ```
 
-## Including Plots
+## Download data
 
-You can also embed plots, for example:
+The code downloads the data to my local machine.It also eliminates variables with null values as they will disrupt the analysis.
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r, message=FALSE}
+
+data_train<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+data_test<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+
+training<-read.csv(data_train, na.strings=c("NA","#DIV/0!", ""))
+testing <-read.csv(data_test, na.strings=c("NA", "#DIV/0!", ""))
+training<-training[,colSums(is.na(training)) == 0]
+testing <-testing[,colSums(is.na(testing)) == 0]
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+## Clean Data
+
+It is important that we eliminate unimportant variables. This code takes us to 53 variables.It also prepares the data for cross validation. It splits the training data into subtraining 75% of the observations and subtesting 25%. The priginal testing data is used for the submission of the 20 values for the quiz.
+
+I use setseed with the split to try to implement some reproducibility. 
+
+```{r, message=FALSE}
+set.seed(9999)
+dim(training)
+training   <-training[,-c(1:7)]
+testing <-testing[,-c(1:7)]
+
+subSamples <- createDataPartition(y=training$classe, p=0.75, list=FALSE)
+subTraining <- training[subSamples, ] 
+subTesting <- training[-subSamples, ]
+
+dim(subTraining)
+dim(subTesting)
+```
+
+## Explore Data
+
+The variable, Classe, has five values. In the training dataset Value A contains the largest number at 4185 cases versus the rest between 2400 and 2848.
+
+```{r, message=FALSE}
+ggplot(subTraining, aes(classe)) +
+  geom_bar(fill = "#0073C2FF") +
+  theme_pubclean()
+```
+
+
+
+
+## Prediction models
+
+### Random Forests
+
+We use two methods to analyze prediction models. The first is random forest. We build the model on the subTraining data then test it on subTesting. From the confusion matrix we see the error rate is .0043 .
+
+```{r, message=FALSE}
+modFitA1 <- randomForest(as.factor(classe) ~. , data=subTraining)
+predictionsA1 <- predict(modFitA1, subTesting, type = "class")
+confusionMatrix(table(predictionsA1, subTesting$classe))
+```
+
+
+### Decision Tree
+
+We know use the decision tree method first showing the graphical depiction of the model. The confusion matrix shows an error rate of .2588 which is signifcantly higher than the result from random forest. We will use the random forest model to submit the quiz results.
+
+```{r, message=FALSE}
+modFitB1 <- rpart(classe ~ ., data=subTraining, method="class")
+fancyRpartPlot(modFitB1)
+
+
+predictB1 <- predict(modFitB1, subTesting, type = "class")
+confusionMatrix(table(predictB1, subTesting$classe))
+```
+
+### Submission file
+
+```{r, message=FALSE}
+predictSubmission <- predict(modFitA1, testing, type="class")
+predictSubmission
+
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictSubmission)
+```
